@@ -10,7 +10,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/go-kit/kit/addsvc/reqrep"
 	"github.com/go-kit/kit/endpoint"
 	kitlog "github.com/go-kit/kit/log"
 	httptransport "github.com/go-kit/kit/transport/http"
@@ -40,13 +39,13 @@ func makeEndpoint(a Add) endpoint.Endpoint {
 			return nil, endpoint.ErrContextCanceled
 		}
 
-		addReq, ok := request.(reqrep.AddRequest)
+		addReq, ok := request.(AddRequest)
 		if !ok {
 			return nil, endpoint.ErrBadCast
 		}
 
 		v := a(ctx, addReq.A, addReq.B)
-		return reqrep.AddResponse{V: v}, nil
+		return AddResponse{V: v}, nil
 	}
 }
 
@@ -94,7 +93,7 @@ func authorizeBefore(ctx context.Context, r *http.Request) context.Context {
 
 func makeHTTPBinding(ctx context.Context, e endpoint.Endpoint, before []httptransport.BeforeFunc, after []httptransport.AfterFunc) http.Handler {
 	decode := func(r *http.Request) (interface{}, error) {
-		var request reqrep.AddRequest
+		var request AddRequest
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			return nil, err
 		}
