@@ -50,27 +50,26 @@ func makeEndpoint(a Add) endpoint.Endpoint {
 	}
 }
 
-func authorize() func(Add) Add {
-	return func(next Add) Add {
-		return func(ctx context.Context, a, b int64) (v int64) {
-			fmt.Printf("authorize %d, %d\n", a, b)
-			v = next(ctx, a, b)
-			fmt.Println("after")
-			return
+func authorizeMW(validUser string) endpoint.Middleware {
+	return func(next endpoint.Endpoint) endpoint.Endpoint {
+		return func(ctx context.Context, request interface{}) (interface{}, error) {
+			auth := ctx.Value("User").(*BasicAuth)
+			if auth.Username == validUser {
+				return next(ctx, request)
+			}
+			return nil, errors.New("user not authorized")
 		}
 	}
 }
 
-func authorizeMW() endpoint.Middleware {
+func authenticateMW() endpoint.Middleware {
 	return func(next endpoint.Endpoint) endpoint.Endpoint {
 		return func(ctx context.Context, request interface{}) (interface{}, error) {
-			fmt.Printf("%#v\n", ctx.Value("Authorization"))
-			auth := ctx.Value("Authorization").(*BasicAuth)
+			auth := ctx.Value("User").(*BasicAuth)
 			if auth.Authenticated() {
 				return next(ctx, request)
 			}
-			// TODO: make a 401 response
-			return nil, errors.New("Bad auth")
+			return nil, errors.New("Bad credentials")
 		}
 	}
 }
@@ -81,15 +80,16 @@ type BasicAuth struct {
 	Ok       bool
 }
 
+// authenticated if username == password
 func (ba *BasicAuth) Authenticated() bool {
-	return ba.Ok && ba.Username == "name" && ba.Password == "password"
+	return ba.Ok && ba.Username == ba.Password
 }
 
 func authorizeBefore(ctx context.Context, r *http.Request) context.Context {
 	u, p, ok := r.BasicAuth()
 	ba := &BasicAuth{u, p, ok}
 
-	return context.WithValue(ctx, "Authorization", ba)
+	return context.WithValue(ctx, "User", ba)
 }
 
 func makeHTTPBinding(ctx context.Context, e endpoint.Endpoint, before []httptransport.BeforeFunc, after []httptransport.AfterFunc) http.Handler {
@@ -132,7 +132,8 @@ func main() {
 	// Server domain
 	var e endpoint.Endpoint
 	e = makeEndpoint(a)
-	e = authorizeMW()(e)
+	e = authenticateMW()(e)
+	e = authorizeMW("user")(e)
 
 	errc := make(chan error)
 	go func() {
